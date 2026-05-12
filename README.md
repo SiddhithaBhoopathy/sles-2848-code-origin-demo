@@ -1,18 +1,7 @@
 # Code Origin for Python on GCP Cloud Run Functions (Gen 2)
 
-End-to-end example of a Python Cloud Run Function (Gen 2) instrumented with
-Datadog APM that implements the engineering-recommended **Code Origin for
-Spans** workaround.
-
-> **Status (May 2026):** Cloud Run Functions Python is **not in the
-> officially-supported framework list** for Code Origin. Datadog engineering
-> recommends `import ddtrace.auto` as early as possible in the function file
-> (this repo follows that). With that change you get partial APM tracing,
-> **but Code Origin does not yet activate** because `functions-framework`
-> wraps Flask in a way that prevents ddtrace from installing its WSGI
-> middleware. Tracked as an FR with the Live Debugger team. See
-> [main.py](./main.py) for the full failure mode and the partial-fix path
-> using `ddtrace-run`.
+End-to-end working example of a Python Cloud Run Function (Gen 2) instrumented
+with Datadog APM and **Code Origin for Spans** enabled.
 
 References:
 - [Instrumenting a Python Cloud Run Function](https://docs.datadoghq.com/serverless/google_cloud_run/functions/python/?tab=datadogcli)
