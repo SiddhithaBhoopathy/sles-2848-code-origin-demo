@@ -1,9 +1,20 @@
-# IMPORTANT: ddtrace.auto MUST be the very first import.
-# Cloud Run Functions don't run via ddtrace-run, so auto-instrumentation
-# of the underlying Flask framework only happens if ddtrace.auto is
-# imported before functions_framework / Flask. Without this, no service
-# entry span is created and Code Origin will NOT appear in the UI.
-import ddtrace.auto  # noqa: F401,E402  isort:skip
+# ddtrace bootstrapping happens in the Procfile via `ddtrace-run`, NOT here.
+#
+# Why not `import ddtrace.auto` at the top of this file (as the Datadog
+# Code Origin docs suggest)?
+#
+#   With Cloud Run Functions, the Python buildpack launches
+#   `functions-framework --target=main`. functions-framework creates its
+#   Flask app *before* it imports this file to look up `main`, so by the
+#   time `import ddtrace.auto` would run here, Flask has already been
+#   instantiated without ddtrace's WSGI middleware. The `flask.request`
+#   service-entry span never gets created, and Code Origin has nothing to
+#   attach to. Symptom in Cloud Run logs:
+#     WARNING [ddtrace.internal.core] No span found in ExecutionContext
+#     flask._patched_request
+#
+# Using `ddtrace-run` as the process launcher (see Procfile) guarantees
+# ddtrace patches Flask BEFORE functions-framework constructs its app.
 
 import logging
 import os

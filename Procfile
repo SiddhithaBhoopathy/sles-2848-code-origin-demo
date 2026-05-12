@@ -1,1 +1,1 @@
-web: functions-framework --target=main --port=$PORT
+web: ddtrace-run functions-framework --target=main --port=$PORT
