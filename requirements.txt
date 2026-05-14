@@ -1,6 +1,5 @@
 # ddtrace 2.15.0+ is required for Code Origin (Python).
-# Pinning to a recent stable release.
 ddtrace==4.5.0
 datadog==0.52.1
-functions-framework==3.*
 flask==3.*
+gunicorn==23.*

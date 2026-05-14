@@ -1,8 +1,8 @@
 # Deployment Instructions
 
-Step-by-step checklist to deploy this Python Cloud Run Function (Gen 2) with
-Datadog Code Origin enabled. Run each block in order; verification command
-at the end of each step.
+Step-by-step checklist to deploy this Python Cloud Run service with Datadog
+APM + Code Origin enabled. Run each block in order; verification command at
+the end of each step.
 
 For background on *why* each piece exists, see [`README.md`](./README.md).
 
@@ -85,17 +85,17 @@ ${EDITOR:-vi} .env
 Fill in at minimum:
 
 ```
-PROJECT_ID="datadog-sandbox"
+PROJECT_ID="datadog-serverless-gcp-demo"
 GCP_FUNCTION_NAME="code-origin-demo"
 DD_SERVICE="code-origin-demo"
 ```
 
-`DD_API_KEY` and `DD_SITE` are optional. If left unset:
+`DD_API_KEY` and `DD_SITE` are optional:
 
-- The script still deploys **and** instruments with the Datadog sidecar.
-- A placeholder string (`REPLACE_VIA_CLOUD_RUN_UI`) is baked into the
-  sidecar's `DD_API_KEY` env var.
-- You replace it via the Cloud Run console after deploy (step 5 below).
+- **Set** — full deploy + instrument flow runs end to end.
+- **Unset** — only `gcloud run deploy` runs; the script prints a "skipping
+  instrumentation" message and exits 0. Add the key to `.env` later and
+  re-run to attach the sidecar.
 
 ---
 
@@ -108,16 +108,19 @@ DD_SERVICE="code-origin-demo"
 What this does, in order:
 
 1. Sources `.env`.
-2. `gcloud run deploy` - creates / updates the Cloud Run service from
-   `main.py`, and sets all container env vars (`DD_SERVICE`, `DD_ENV`,
-   `DD_VERSION`, `DD_CODE_ORIGIN_FOR_SPANS_ENABLED=true`,
-   `DD_LOGS_INJECTION=true`, `PYTHONUNBUFFERED=1`,
-   `GOOGLE_FUNCTION_TARGET=main`, plus auto-derived `DD_GIT_*`) inline
-   via `--set-env-vars`.
-3. `datadog-ci cloud-run instrument` - patches the service to add the
+2. `gcloud run deploy --source=.` — Google Cloud Buildpacks detect Python
+   from `requirements.txt`, install dependencies, and produce a container
+   whose start command comes from `Procfile`:
+   `ddtrace-run gunicorn -w 4 -b :$PORT main:app`. The script sets all
+   application-container env vars inline via `--set-env-vars`
+   (`DD_SERVICE`, `DD_ENV`, `DD_VERSION`, `DD_TRACE_ENABLED=true`,
+   `DD_REMOTE_CONFIGURATION_ENABLED=false`,
+   `DD_CODE_ORIGIN_FOR_SPANS_ENABLED=true`, `DD_LOGS_INJECTION=true`,
+   `PYTHONUNBUFFERED=1`, plus auto-derived `DD_GIT_*`).
+3. `datadog-ci cloud-run instrument` — patches the service to add the
    `serverless-init` sidecar, an in-memory shared volume mounted into both
    containers, and the sidecar env vars (`DD_API_KEY`, `DD_SITE`,
-   `DD_SERVERLESS_LOG_PATH`, `FUNCTION_TARGET`).
+   `DD_SERVERLESS_LOG_PATH`).
 
 Verify the service is up and reachable:
 
@@ -134,7 +137,7 @@ Verify both containers exist on the service:
 gcloud run services describe "$GCP_FUNCTION_NAME" \
   --region us-central1 \
   --format='value(spec.template.spec.containers[].name)'
-# Expected (newline-separated): the function container + a datadog sidecar
+# Expected (newline-separated): the application container + a datadog sidecar
 ```
 
 ---
@@ -153,35 +156,15 @@ In Datadog:
 2. Filter `service:code-origin-demo` and select the **Service Entry Spans**
    preset.
 3. Open a span -> **Overview** tab -> look for the **Code Origin** section.
-   You should see `main.py`, the line of `def main`, and method `main`.
+   You should see `main.py`, the line of the route handler, and the method
+   name.
 
 If the **Code Origin** section is missing, see the troubleshooting section
 in [`README.md`](./README.md).
 
 ---
 
-## 5. (If you left `DD_API_KEY` unset) replace the placeholder via the UI
-
-The function and sidecar are already deployed - you just need to swap the
-placeholder API key for a real one.
-
-1. Open the [Cloud Run console](https://console.cloud.google.com/run) and
-   click into `code-origin-demo`.
-2. Click **Edit & Deploy New Revision**.
-3. In the **Containers** section pick the Datadog sidecar container (its
-   image starts with `gcr.io/datadoghq/serverless-init:...`).
-4. **Variables & Secrets** tab -> find `DD_API_KEY` -> edit:
-   - Plain value: paste the real Datadog API key, **or**
-   - Reference a Secret Manager secret (recommended for prod, since the key
-     stays out of revision metadata).
-5. Click **Deploy** at the bottom. Cloud Run will create a new revision
-   and roll traffic to it.
-
-Then run step 4 ("verify telemetry") above.
-
----
-
-## 6. Re-deploy on code changes
+## 5. Re-deploy on code changes
 
 For any change to `main.py`, `requirements.txt`, `Procfile`, or the env vars
 in `build_and_deploy.sh`:
@@ -192,25 +175,6 @@ in `build_and_deploy.sh`:
 
 The script is idempotent. `datadog-ci instrument` is a no-op (well, a
 revision bump) if the sidecar is already wired up correctly.
-
-**Important:** `datadog-ci cloud-run instrument` always rewrites the
-sidecar's `DD_API_KEY` to whatever is in your shell when the script runs.
-That means if you replaced the placeholder via the UI in step 5, the
-**next** run of `build_and_deploy.sh` with `DD_API_KEY` unset in `.env`
-will clobber your real key with the placeholder again.
-
-Pick one of these on the second deploy and after:
-
-- **Put the real key in `.env`** (gitignored - safe locally) so the script
-  re-applies it every time. Easiest, but the key lives on the deployer's
-  laptop.
-- **Use a Secret Manager reference** instead of a plain value. Set
-  `DD_API_KEY` in `.env` to the secret resource path
-  (`projects/PROJECT/secrets/datadog-api-key/versions/latest`), then pass
-  `--api-key-secret` to `datadog-ci`. (Requires a small script tweak -
-  ping if you want this added.) Production-recommended path.
-- **Manually edit the sidecar after each redeploy.** Works but tedious -
-  only sane for one-off changes.
 
 ---
 

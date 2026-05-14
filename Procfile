@@ -1,1 +1,1 @@
-web: functions-framework --target=main --port=$PORT
+web: ddtrace-run gunicorn -w 4 -b :$PORT main:app
